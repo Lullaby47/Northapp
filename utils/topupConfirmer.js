@@ -9,9 +9,9 @@ const { normalizePhrase } = require("./paymentValidator");
  * @param {Object} db - Database instance
  * @returns {Array} - Array of topup records
  */
-function getActiveTopups(db) {
+async function getActiveTopups(db) {
   const now = new Date().toISOString();
-  const topups = db
+  const topups = await db
     .prepare(`
       SELECT id, userId, code, status, expiresAt, createdAt, amount_coins
       FROM topups 
@@ -29,7 +29,7 @@ function getActiveTopups(db) {
  * @param {string} codeCandidate - Normalized passphrase from safe zones
  * @returns {Object} - { topup: Object|null, reason: string, matchedPhrase: string|null }
  */
-function findMatchingTopupByPhrase(db, codeCandidate) {
+async function findMatchingTopupByPhrase(db, codeCandidate) {
   if (!codeCandidate || typeof codeCandidate !== "string") {
     return {
       topup: null,
@@ -47,7 +47,7 @@ function findMatchingTopupByPhrase(db, codeCandidate) {
     };
   }
 
-  const activeTopups = getActiveTopups(db);
+  const activeTopups = await getActiveTopups(db);
   
   console.log(`🔍 [MATCHER] Checking ${activeTopups.length} active topup(s) against candidate: "${normalizedCandidate}"`);
   
@@ -117,7 +117,7 @@ function findMatchingTopupByPhrase(db, codeCandidate) {
  * @param {Object} db - Database instance
  * @returns {Object} - { success: boolean, reason: string, topupId?: number, userId?: number, coins?: number, extracted_code?: string }
  */
-function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountString, email_uid, subject, bodyPreview, emailDate }, db) {
+async function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountString, email_uid, subject, bodyPreview, emailDate }, db) {
   console.log(`💳 [CONFIRMER] Starting confirmation for email UID: ${email_uid}`);
   console.log(`💳 [CONFIRMER] Code candidate: "${codeCandidate}" (from ${code_source})`);
   console.log(`💳 [CONFIRMER] Email amount string: ${amountString} (for logging only, coins come from DB)`);
@@ -125,7 +125,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
   console.log(`💳 [CONFIRMER] Email date: ${emailDate || "Unknown"}`);
   
   // Check idempotency: if this email UID was already processed, skip
-  const existingLog = db.prepare("SELECT email_uid FROM payment_logs WHERE email_uid = ? AND decision = 'ACCEPTED'").get(email_uid);
+  const existingLog = await db.prepare("SELECT email_uid FROM payment_logs WHERE email_uid = ? AND decision = 'ACCEPTED'").get(email_uid);
   if (existingLog) {
     const reason = `Email UID ${email_uid} already processed (idempotency check)`;
     console.log(`💳 [CONFIRMER] ⚠️  ${reason}`);
@@ -139,7 +139,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
   if (isNaN(coins) || coins <= 0) {
     const reason = `Invalid email amount: ${amountString} (must be > 0). Parser returned empty/invalid amount - likely no strong transaction match found.`;
     console.log(`💳 [CONFIRMER] ❌ ${reason}`);
-    logPayment({
+    await logPayment({
       email_uid,
       parser_amount: amountString,
       extracted_code: codeCandidate,
@@ -154,11 +154,11 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
   console.log(`💳 [CONFIRMER] Using parser amount: ${coins} coins (from parser amount: ${amountString})`);
 
   // Find matching topup by exact phrase match
-  const matchResult = findMatchingTopupByPhrase(db, codeCandidate);
+  const matchResult = await findMatchingTopupByPhrase(db, codeCandidate);
 
   if (!matchResult.topup) {
     console.log(`💳 [CONFIRMER] ❌ ${matchResult.reason}`);
-    logPayment({
+    await logPayment({
       email_uid,
       parser_amount: amountString,
       extracted_code: matchResult.matchedPhrase,
@@ -252,11 +252,11 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
 
   // Transaction (MUST be atomic) - Prevents double-crediting
   try {
-    const transaction = db.transaction(() => {
+    const transaction = db.transaction(async () => {
       console.log(`💳 [CONFIRMER] Starting atomic transaction...`);
       
       // Double-check status and expiry before updating (prevent race conditions)
-      const currentTopup = db
+      const currentTopup = await db
         .prepare(`
           SELECT status, amount_coins 
           FROM topups 
@@ -270,7 +270,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
       
       console.log(`💳 [CONFIRMER] Updating topup: setting status=CONFIRMED and amount_coins=${coins} (from email)...`);
       // Update topup status and amount_coins from email
-      const updateResult = db
+      const updateResult = await db
         .prepare(`
           UPDATE topups 
           SET status = 'CONFIRMED', amount_coins = ?
@@ -282,7 +282,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
       
       if (updateResult.changes !== 1) {
         // Check if it was already confirmed
-        const checkTopup = db.prepare("SELECT status, amount_coins FROM topups WHERE id = ?").get(topup.id);
+        const checkTopup = await db.prepare("SELECT status, amount_coins FROM topups WHERE id = ?").get(topup.id);
         if (checkTopup && checkTopup.status === "CONFIRMED") {
           throw new Error(`TopUp already confirmed (amount: ${checkTopup.amount_coins} coins) - preventing double-credit`);
         }
@@ -291,7 +291,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
       
       console.log(`💳 [CONFIRMER] Updating user balance: adding ${coins} coins (from email) to user ${topup.userId}`);
       // Update user balance (add coins from email to existing balance)
-      const balanceResult = db.prepare(`
+      const balanceResult = await db.prepare(`
         UPDATE users 
         SET balance_coins = balance_coins + ? 
         WHERE id = ?
@@ -304,11 +304,11 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
       console.log(`💳 [CONFIRMER] ✅ Balance updated successfully with ${coins} coins from email`);
     });
     
-    transaction();
+    await transaction();
     console.log(`💳 [CONFIRMER] ✅ Transaction committed successfully`);
     
     // Log success (with code_source in reason)
-    logPayment({
+    await logPayment({
       email_uid,
       parser_amount: amountString,
       extracted_code: matchedPhrase,
@@ -334,7 +334,7 @@ function confirmTopupFromEmail({ codeCandidate, code_source = "unknown", amountS
     const reason = `Database transaction failed: ${e.message}`;
     console.log(`💳 [CONFIRMER] ❌ Transaction failed: ${reason}`);
     console.log(`💳 [CONFIRMER] Stack:`, e.stack);
-    logPayment({
+    await logPayment({
       email_uid,
       parser_amount: amountString,
       extracted_code: matchedPhrase,

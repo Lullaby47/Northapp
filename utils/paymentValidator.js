@@ -99,7 +99,7 @@ function extractPassphraseFromSafeZones(parserData, emailBody, emailSubject) {
  * @param {string} emailUid - Email UID
  * @returns {Object} - Validation result
  */
-function validatePayment(parserData, emailBody, emailSubject, emailUid) {
+async function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   const {
     amount,
     pay_type,
@@ -136,7 +136,7 @@ function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   if (pay_type !== "sent") {
     logData.decision = "REJECTED";
     logData.reason = `Invalid pay_type: ${pay_type} (only "sent" payments accepted)`;
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 
@@ -144,7 +144,7 @@ function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   if (!amount || amount.trim() === "") {
     logData.decision = "REJECTED";
     logData.reason = "Amount missing or empty";
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 
@@ -152,7 +152,7 @@ function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   if (isNaN(amountNum) || amountNum <= 0) {
     logData.decision = "REJECTED";
     logData.reason = `Invalid amount: ${amount} (must be > 0)`;
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 
@@ -160,7 +160,7 @@ function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   if (request_status && request_status !== "" && request_status !== "active") {
     logData.decision = "REJECTED";
     logData.reason = `Invalid request_status: ${request_status}`;
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 
@@ -168,14 +168,14 @@ function validatePayment(parserData, emailBody, emailSubject, emailUid) {
   if (is_expired === true) {
     logData.decision = "REJECTED";
     logData.reason = "Payment marked as expired by parser";
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 
   // Rule 5: Must have code candidate from safe zones
   if (!codeCandidate) {
     logData.reason = "No passphrase found in safe zones (receipt_memo, note_part, subject, TOPUP line)";
-    logPayment(logData);
+    await logPayment(logData);
     return { valid: false, reason: logData.reason, codeCandidate: null, code_source: null };
   }
 

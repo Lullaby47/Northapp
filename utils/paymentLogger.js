@@ -18,7 +18,7 @@ const db = require("../db");
  * @param {string} logData.short_body_preview - First 200 chars of body
  * @param {string} logData.full_email_data - Full email data (optional, for debugging)
  */
-function logPayment(logData) {
+async function logPayment(logData) {
   try {
     const {
       email_uid = null,
@@ -40,7 +40,7 @@ function logPayment(logData) {
       return;
     }
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO payment_logs (
         email_uid,
         parser_pay_type,
@@ -90,7 +90,7 @@ function logPayment(logData) {
  * @param {number} filters.limit - Limit results (default 500)
  * @param {number} filters.offset - Offset for pagination
  */
-function getPaymentLogs(filters = {}) {
+async function getPaymentLogs(filters = {}) {
   const {
     code = null,
     decision = null,
@@ -135,14 +135,14 @@ function getPaymentLogs(filters = {}) {
   query += " ORDER BY pl.timestamp DESC LIMIT ? OFFSET ?";
   params.push(limit, offset);
 
-  return db.prepare(query).all(...params);
+  return await db.prepare(query).all(...params);
 }
 
 /**
  * Get payment log by ID
  */
-function getPaymentLogById(id) {
-  return db.prepare(`
+async function getPaymentLogById(id) {
+  return await db.prepare(`
     SELECT 
       pl.*,
       u.username,

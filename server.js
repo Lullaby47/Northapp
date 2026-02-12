@@ -803,7 +803,7 @@ app.delete("/games/:id", requireAdmin, async (req, res) => {
 app.get("/game-usernames", requireAuth, async (req, res) => {
   const currentUsername = req.user.username;
   
-  const usernames = db
+  const usernames = await db
     .prepare(`
       SELECT 
         gu.id,
@@ -1093,8 +1093,8 @@ app.post("/api/game-redeems", requireAuth, async (req, res) => {
 // ---------------- Payment QRs Routes (Admin/Co-Admin only) ----------------
 
 // GET /api/payment-qrs - List all payment QRs
-app.get("/api/payment-qrs", requireAnyRole("admin", "coadmin"), (req, res) => {
-  const qrs = db
+app.get("/api/payment-qrs", requireAnyRole("admin", "coadmin"), async (req, res) => {
+  const qrs = await db
     .prepare(`
       SELECT id, name, imageUrl, createdBy, createdAt 
       FROM payment_qrs 
@@ -1106,7 +1106,7 @@ app.get("/api/payment-qrs", requireAnyRole("admin", "coadmin"), (req, res) => {
 });
 
 // POST /api/payment-qrs - Upload new payment QR
-app.post("/api/payment-qrs", requireAnyRole("admin", "coadmin"), upload.single("image"), (req, res) => {
+app.post("/api/payment-qrs", requireAnyRole("admin", "coadmin"), upload.single("image"), async (req, res) => {
   const name = String(req.body?.name || "").trim();
   const file = req.file;
 
@@ -1122,7 +1122,7 @@ app.post("/api/payment-qrs", requireAnyRole("admin", "coadmin"), upload.single("
   const imageUrl = `/uploads/payment-qrs/${file.filename}`;
 
   try {
-    const info = db
+    const info = await db
       .prepare("INSERT INTO payment_qrs (name, imageUrl, createdBy) VALUES (?, ?, ?)")
       .run(name, imageUrl, userId);
     
@@ -1255,7 +1255,7 @@ app.post("/api/topups", requireAuth, async (req, res) => {
 
   try {
     // Create topup without amount_coins (will be set from email when confirmed)
-    const info = db
+    const info = await db
       .prepare("INSERT INTO topups (userId, code, qrId, status, expiresAt, armed_uidnext, amount_coins) VALUES (?, ?, ?, 'PENDING', ?, ?, NULL)")
       .run(userId, code, qrId, expiresAt, armedUidnext);
     
@@ -1408,7 +1408,7 @@ app.post("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin
 });
 
 // GET /api/admin/payment-logs - Get payment logs (Admin/Co-Admin only)
-app.get("/api/admin/payment-logs", requireAnyRole("admin", "coadmin"), (req, res) => {
+app.get("/api/admin/payment-logs", requireAnyRole("admin", "coadmin"), async (req, res) => {
   const { getPaymentLogs } = require("./utils/paymentLogger");
   
   const code = req.query.code || null;
@@ -1418,7 +1418,7 @@ app.get("/api/admin/payment-logs", requireAnyRole("admin", "coadmin"), (req, res
   const limit = Math.min(Number(req.query.limit) || 500, 1000); // Max 1000
   const offset = Number(req.query.offset) || 0;
 
-  const logs = getPaymentLogs({
+  const logs = await getPaymentLogs({
     code,
     decision,
     startDate,
@@ -1431,7 +1431,7 @@ app.get("/api/admin/payment-logs", requireAnyRole("admin", "coadmin"), (req, res
 });
 
 // GET /api/admin/payment-logs/:id - Get single payment log (Admin/Co-Admin only)
-app.get("/api/admin/payment-logs/:id", requireAnyRole("admin", "coadmin"), (req, res) => {
+app.get("/api/admin/payment-logs/:id", requireAnyRole("admin", "coadmin"), async (req, res) => {
   const { getPaymentLogById } = require("./utils/paymentLogger");
   
   const logId = Number(req.params.id);
@@ -1439,7 +1439,7 @@ app.get("/api/admin/payment-logs/:id", requireAnyRole("admin", "coadmin"), (req,
     return res.status(400).json({ error: "Invalid log ID" });
   }
 
-  const log = getPaymentLogById(logId);
+  const log = await getPaymentLogById(logId);
   if (!log) {
     return res.status(404).json({ error: "Log not found" });
   }

@@ -6,7 +6,7 @@ function clearAuthCookie(res) {
   res.clearCookie("auth", { path: "/" });
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const cookieToken = req.cookies?.auth;
 
   const allowHeader = String(process.env.ALLOW_AUTH_HEADER || "false").toLowerCase() === "true";
@@ -24,7 +24,7 @@ function requireAuth(req, res, next) {
     }
     
     // Check if user is banned
-    const user = db.prepare("SELECT is_banned FROM users WHERE id = ?").get(payload.sub);
+    const user = await db.prepare("SELECT is_banned FROM users WHERE id = ?").get(payload.sub);
     if (user && user.is_banned) {
       clearAuthCookie(res);
       return res.status(403).json({ error: "Account is banned" });
@@ -40,11 +40,11 @@ function requireAuth(req, res, next) {
 
 function requireAdmin(req, res, next) {
   // First check authentication
-  requireAuth(req, res, () => {
+  requireAuth(req, res, async () => {
     const userId = req.user.sub;
     
     // Get user from database to check role
-    const user = db.prepare("SELECT id, role, is_banned FROM users WHERE id = ?").get(userId);
+    const user = await db.prepare("SELECT id, role, is_banned FROM users WHERE id = ?").get(userId);
     
     if (!user) {
       return res.status(404).json({ error: "User not found" });
@@ -67,11 +67,11 @@ function requireAdmin(req, res, next) {
 
 function requireAnyRole(...allowedRoles) {
   return (req, res, next) => {
-    requireAuth(req, res, () => {
+    requireAuth(req, res, async () => {
       const userId = req.user.sub;
       
       // Get user from database to check role
-      const user = db.prepare("SELECT id, role, is_banned FROM users WHERE id = ?").get(userId);
+      const user = await db.prepare("SELECT id, role, is_banned FROM users WHERE id = ?").get(userId);
       
       if (!user) {
         return res.status(404).json({ error: "User not found" });

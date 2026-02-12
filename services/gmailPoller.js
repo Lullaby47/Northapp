@@ -13,14 +13,14 @@ let pollLoopRunning = false;
 let pollLoopStopFlag = false; // Flag to stop the polling loop
 
 // Helper: Get setting value
-function getSetting(db, key, defaultValue = null) {
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key);
+async function getSetting(db, key, defaultValue = null) {
+  const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key);
   return row ? row.value : defaultValue;
 }
 
 // Helper: Set setting value
-function setSetting(db, key, value) {
-  db.prepare(`
+async function setSetting(db, key, value) {
+  await db.prepare(`
     INSERT INTO app_settings (key, value, updated_at) 
     VALUES (?, ?, datetime('now'))
     ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')
@@ -28,27 +28,27 @@ function setSetting(db, key, value) {
 }
 
 // Helper: Get start UID (gmail_start_uid)
-function getStartUid(db) {
-  const startUid = getSetting(db, "gmail_start_uid", null);
+async function getStartUid(db) {
+  const startUid = await getSetting(db, "gmail_start_uid", null);
   return startUid ? parseInt(startUid) : null;
 }
 
 // Helper: Set start UID
-function setStartUid(db, uid) {
-  setSetting(db, "gmail_start_uid", String(uid));
+async function setStartUid(db, uid) {
+  await setSetting(db, "gmail_start_uid", String(uid));
 }
 
 // Helper: Check if email UID marker exists (dedupe)
-function markerExists(db, mailbox, uid) {
+async function markerExists(db, mailbox, uid) {
   const markerKey = `${mailbox}:${uid}`;
   try {
-    const row = db.prepare("SELECT uid FROM mail_markers WHERE uid = ?").get(markerKey);
+    const row = await db.prepare("SELECT uid FROM mail_markers WHERE uid = ?").get(markerKey);
     return !!row;
   } catch (e) {
     // If table doesn't exist, create it and return false (not processed)
     if (e.message && e.message.includes("no such table: mail_markers")) {
       try {
-        initMailMarkersTable(db);
+        await initMailMarkersTable(db);
         return false; // Table didn't exist, so marker doesn't exist
       } catch (initError) {
         return false; // Fail-safe: assume not processed
@@ -59,10 +59,10 @@ function markerExists(db, mailbox, uid) {
 }
 
 // Helper: Mark email UID as processed (dedupe)
-function markProcessed(db, mailbox, uid) {
+async function markProcessed(db, mailbox, uid) {
   const markerKey = `${mailbox}:${uid}`;
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO mail_markers (uid, created_at) 
       VALUES (?, datetime('now'))
     `).run(markerKey);
@@ -77,15 +77,15 @@ function markProcessed(db, mailbox, uid) {
 }
 
 // Initialize mail_markers table (call on startup)
-function initMailMarkersTable(db) {
+async function initMailMarkersTable(db) {
   try {
-    db.exec(`
+    await db.exec(`
       CREATE TABLE IF NOT EXISTS mail_markers (
         uid TEXT PRIMARY KEY,
         created_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
     `);
-    db.exec(`
+    await db.exec(`
       CREATE INDEX IF NOT EXISTS idx_mail_markers_created ON mail_markers(created_at);
     `);
     console.log("✅ Mail markers table initialized");
@@ -259,7 +259,7 @@ async function openMailboxWithFallback(client, db) {
       }
       
       // On first successful open, save UIDNEXT as start boundary if not set
-      const currentStartUid = getStartUid(db);
+      const currentStartUid = await getStartUid(db);
       if (mailboxInfo && mailboxInfo.uidNext != null && currentStartUid === null) {
         const uidNextValue = mailboxInfo.uidNext;
         const uidNext = typeof uidNextValue === "number" 
@@ -267,7 +267,7 @@ async function openMailboxWithFallback(client, db) {
           : (typeof uidNextValue === "string" ? parseInt(uidNextValue) : parseInt(String(uidNextValue || "0")));
         if (!isNaN(uidNext) && uidNext > 0) {
           console.log(`📬 [MAILBOX] First open detected, saving UIDNEXT: ${uidNext} as start boundary`);
-          setStartUid(db, uidNext);
+          await setStartUid(db, uidNext);
         }
       }
       
@@ -295,7 +295,7 @@ async function processEmails(db, client) {
     mailboxName = mailbox;
     
     // Get min armed_uidnext from PENDING topups (poller is "armed" only when topup exists)
-    const minArmedTopup = db
+    const minArmedTopup = await db
       .prepare(`
         SELECT MIN(armed_uidnext) as min_uidnext 
         FROM topups 
@@ -305,7 +305,7 @@ async function processEmails(db, client) {
     
     if (!minArmedTopup || minArmedTopup.min_uidnext === null) {
       // No armed topups, nothing to process
-      setSetting(db, "gmail_last_checked_at", new Date().toISOString());
+      await setSetting(db, "gmail_last_checked_at", new Date().toISOString());
       return { processed: 0, found: 0, parsed: 0, confirmed: 0, rejected: 0, mailbox: mailboxName };
     }
     
@@ -313,7 +313,7 @@ async function processEmails(db, client) {
     
     // Search emails from armed_uidnext onwards
     const searchUid = `${startUid}:*`;
-    const debugMode = getSetting(db, "gmail_debug_mode", "0") === "1";
+    const debugMode = (await getSetting(db, "gmail_debug_mode", "0")) === "1";
     const searchCriteria = debugMode 
       ? { uid: searchUid }
       : { unseen: true, uid: searchUid };
@@ -322,7 +322,7 @@ async function processEmails(db, client) {
     const uids = await client.search(searchCriteria, { uid: true });
     
     if (!uids || uids.length === 0) {
-      setSetting(db, "gmail_last_checked_at", new Date().toISOString());
+      await setSetting(db, "gmail_last_checked_at", new Date().toISOString());
       return { processed: 0, found: 0, parsed: 0, confirmed: 0, rejected: 0, mailbox: mailboxName };
     }
 
@@ -345,7 +345,7 @@ async function processEmails(db, client) {
       console.log(`📧 Email received (UID: ${uid})`);
       
       // Check dedupe marker BEFORE processing
-      if (markerExists(db, mailboxName, uid)) {
+      if (await markerExists(db, mailboxName, uid)) {
         console.log(`   → Already processed, ignored`);
         // Still advance highestProcessedUid if this was successfully processed before
         if (uidNum > highestProcessedUid) {
@@ -366,7 +366,7 @@ async function processEmails(db, client) {
 
         if (!message || !message.source) {
           console.log(`   → Could not fetch email source, ignored`);
-          logPayment({
+          await logPayment({
             email_uid: uid,
             decision: "IGNORED",
             reason: "Could not fetch email source",
@@ -425,7 +425,7 @@ async function processEmails(db, client) {
           }
         } catch (e) {
           console.log(`   → Parser error: ${e.message}, ignored`);
-          logPayment({
+          await logPayment({
             email_uid: uid,
             decision: "ERROR",
             reason: `Python parser error: ${e.message}`,
@@ -451,13 +451,13 @@ async function processEmails(db, client) {
           // Always mark as seen and insert marker even on rejection to avoid loops
           try {
             await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
-            markProcessed(db, mailboxName, uid);
+            await markProcessed(db, mailboxName, uid);
           } catch {}
           continue;
         }
 
         // Use strict confirmation handler with exact phrase matching
-        const confirmation = confirmTopupFromEmail(
+        const confirmation = await confirmTopupFromEmail(
           {
             codeCandidate: validation.codeCandidate,
             code_source: validation.code_source,
@@ -484,11 +484,11 @@ async function processEmails(db, client) {
         // Always mark as seen and insert marker even on rejection to avoid loops
         try {
           await client.messageFlagsAdd(uid, ["\\Seen"], { uid: true });
-          markProcessed(db, mailboxName, uid);
+          await markProcessed(db, mailboxName, uid);
         } catch {}
       } catch (e) {
         console.log(`   → Error processing: ${e.message}, ignored`);
-        logPayment({
+        await logPayment({
           email_uid: uid,
           decision: "ERROR",
           reason: `Email processing error: ${e.message}`,
@@ -501,7 +501,7 @@ async function processEmails(db, client) {
       // Only mark as processed and advance start UID if something was saved
       if (savedAny) {
         try {
-          markProcessed(db, mailboxName, uid);
+          await markProcessed(db, mailboxName, uid);
           // Advance highest processed UID
           if (uidNum > highestProcessedUid) {
             highestProcessedUid = uidNum;
@@ -516,10 +516,10 @@ async function processEmails(db, client) {
     // Advance to highestProcessedUid + 1 so next run starts after it
     if (highestProcessedUid >= startUid) {
       const newStartUid = highestProcessedUid + 1;
-      setStartUid(db, newStartUid);
+      await setStartUid(db, newStartUid);
     }
     
-    setSetting(db, "gmail_last_checked_at", new Date().toISOString());
+    await setSetting(db, "gmail_last_checked_at", new Date().toISOString());
     
     return { 
       processed: processedCount,
@@ -534,7 +534,7 @@ async function processEmails(db, client) {
   } catch (e) {
     console.error(`📬 Error processing emails: ${e.message}`);
     // Log error but don't throw - allow retry
-    logPayment({
+    await logPayment({
       email_uid: null,
       decision: "ERROR",
       reason: `Batch processing error: ${e.message}`,

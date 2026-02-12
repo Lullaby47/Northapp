@@ -1,0 +1,505 @@
+<!-- public/dashboard.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Dashboard - Point Loader</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <!-- Top Navigation Bar -->
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="navbar-brand-group">
+        <div class="navbar-brand">GameBoy</div>
+        <div id="navCoins" class="nav-coins" style="display:none;">
+          <span class="nav-coins-icon">💰</span>
+          <span id="navCoinsValue" class="nav-coins-value">0</span>
+        </div>
+      </div>
+      <div class="navbar-user" id="navbarUser">Loading...</div>
+      <div class="navbar-actions">
+        <button class="nav-btn" id="btnNavDashboard">Dashboard</button>
+        <button class="nav-btn" id="btnNavAdmin" style="display:none;">Admin</button>
+        <button class="nav-btn" id="btnNavLogout">Logout</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Page Content -->
+  <main class="page">
+    <div class="page-layout">
+      <!-- Sidebar -->
+      <aside class="sidebar" id="sidebar">
+        <div class="sidebar-content">
+          <button class="sidebar-btn" id="sidebarBtnGame" style="display:none;">
+            <span class="sidebar-btn-icon">🎮</span>
+            <span>Games</span>
+          </button>
+          <button class="sidebar-btn" id="sidebarBtnUsername">
+            <span class="sidebar-btn-icon">👤</span>
+            <span>Usernames</span>
+          </button>
+          <button class="sidebar-btn" id="sidebarBtnPayments" style="display:none;">
+            <span class="sidebar-btn-icon">💳</span>
+            <span>Payments</span>
+          </button>
+          <button class="sidebar-btn" id="sidebarBtnTopUp">
+            <span class="sidebar-btn-icon">💰</span>
+            <span>TopUp</span>
+          </button>
+          <button class="sidebar-btn" id="sidebarBtnPlay">
+            <span class="sidebar-btn-icon">🎮</span>
+            <span>Play</span>
+          </button>
+        </div>
+      </aside>
+
+      <!-- Main Content Area -->
+      <div class="main-content">
+        <div class="container">
+          <!-- Dashboard Content -->
+          <div id="dashboardContent" style="display:none;">
+            <h1>Dashboard</h1>
+
+            <div class="msg" data-kind="error" style="margin-top:6px;">
+              <strong>Self-Custody Notice</strong><br />
+              If you lose your recovery phrase, <strong>we cannot restore access</strong>.
+            </div>
+
+            <div class="msg" id="who" style="margin-top:12px;">Loading...</div>
+            <div class="small" id="created" style="margin-top:10px;"></div>
+
+            <div class="msg" id="msg" style="margin-top:12px;"></div>
+          </div>
+
+          <!-- Game View (Admin Only) -->
+          <div id="gameView" style="display:none;">
+            <h1>Game Management</h1>
+            
+            <!-- Toast Message Area -->
+            <div id="gameToast" class="toast" style="display:none;"></div>
+
+            <!-- Add Game Form Card -->
+            <div class="form-card" style="margin-top:24px;">
+              <div class="form-card-header">
+                <h2>Add New Game</h2>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group">
+                  <input 
+                    id="gameNameInput" 
+                    type="text" 
+                    class="input-large" 
+                    placeholder="Enter game name (e.g., Orion Stars)" 
+                    autocomplete="off"
+                  />
+                  <button class="btn-primary" id="btnAddGame">
+                    <span>Add Game</span>
+                  </button>
+                </div>
+                <div class="input-hint">
+                  We auto-generate Short Code (OS) + Slug (orion-stars)
+                </div>
+              </div>
+            </div>
+
+            <!-- Games List -->
+            <div class="games-section" style="margin-top:32px;">
+              <h2 class="section-title">Your Games</h2>
+              <div id="gamesList" class="games-list"></div>
+            </div>
+          </div>
+
+          <!-- Username View (All Roles) -->
+          <div id="usernameView" style="display:none;">
+            <h1>Game Usernames</h1>
+            
+            <!-- Toast Message Area -->
+            <div id="usernameToast" class="toast" style="display:none;"></div>
+
+            <div class="alert alert-warning" style="margin-top:16px;">
+              <strong>⚠️ IMPORTANT: Save Your Username</strong><br />
+              If you forget your username, <strong>nobody will be able to retrieve it</strong>. 
+              Save it securely along with your recovery phrase.
+            </div>
+
+            <!-- Usernames List -->
+            <div class="games-section" style="margin-top:32px;">
+              <h2 class="section-title">Your Game Usernames</h2>
+              <div id="usernamesList" class="games-list"></div>
+            </div>
+          </div>
+
+          <!-- Payments Systems View (Admin/Co-Admin Only) -->
+          <div id="paymentsView" style="display:none;">
+            <h1>Payments Systems</h1>
+            
+            <!-- Toast Message Area -->
+            <div id="paymentsToast" class="toast" style="display:none;"></div>
+
+            <!-- Upload Form Card -->
+            <div class="form-card" style="margin-top:24px;">
+              <div class="form-card-header">
+                <h2>Upload Payment QR</h2>
+              </div>
+              <div class="form-card-body">
+                <div class="input-group">
+                  <input 
+                    id="paymentQrNameInput" 
+                    type="text" 
+                    class="input-large" 
+                    placeholder="QR Display Name (e.g., PayPal QR)" 
+                    autocomplete="off"
+                  />
+                  <input 
+                    id="paymentQrFileInput" 
+                    type="file" 
+                    accept="image/png,image/jpeg,image/jpg,image/webp"
+                    style="display:none;"
+                  />
+                  <label for="paymentQrFileInput" class="btn-secondary" style="width:auto; cursor:pointer; margin-top:0;">
+                    Choose Image
+                  </label>
+                  <span id="paymentQrFileName" style="align-self:center; color:var(--muted); font-size:13px; min-width:120px;"></span>
+                  <button class="btn-primary" id="btnUploadPaymentQr">
+                    <span>Upload</span>
+                  </button>
+                </div>
+                <div class="input-hint">
+                  Supported formats: PNG, JPG, JPEG, WEBP (max 2MB)
+                </div>
+              </div>
+            </div>
+
+            <!-- Payment QRs List -->
+            <div class="games-section" style="margin-top:32px;">
+              <h2 class="section-title">Payment QRs</h2>
+              <div id="paymentQrsList" class="games-list"></div>
+            </div>
+
+            <!-- Gmail Payment Monitor Section -->
+            <div class="games-section" style="margin-top:48px;">
+              <h2 class="section-title">Gmail Payment Monitor</h2>
+              
+              <!-- Gmail Settings Form Card -->
+              <div class="form-card" style="margin-top:18px;">
+                <div class="form-card-header">
+                  <h2>Gmail Settings</h2>
+                </div>
+                <div class="form-card-body">
+                  <div style="display:flex; flex-direction:column; gap:14px;">
+                    <div>
+                      <label style="margin-bottom:6px;">Gmail Address</label>
+                      <input 
+                        id="gmailAddressInput" 
+                        type="email" 
+                        class="input-large" 
+                        placeholder="your.email@gmail.com" 
+                        autocomplete="email"
+                      />
+                    </div>
+                    
+                    <div>
+                      <label style="margin-bottom:6px;">Gmail App Password</label>
+                      <div style="position:relative;">
+                        <input 
+                          id="gmailAppPasswordInput" 
+                          type="password" 
+                          class="input-large" 
+                          placeholder="Enter 16-character app password" 
+                          autocomplete="off"
+                        />
+                        <button 
+                          type="button" 
+                          id="toggleGmailPassword" 
+                          class="password-toggle" 
+                          style="right:8px; top:50%; transform:translateY(-50%);"
+                          aria-label="Toggle password visibility"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:block;">
+                            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"></path>
+                            <circle cx="12" cy="12" r="3"></circle>
+                          </svg>
+                          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none;">
+                            <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"></path>
+                            <line x1="1" y1="1" x2="23" y2="23"></line>
+                          </svg>
+                        </button>
+                      </div>
+                      <div class="input-hint">
+                        Generate app password in Google Account settings (Security → 2-Step Verification → App passwords)
+                      </div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:12px; padding:12px; background:rgba(0,0,0,0.2); border-radius:10px; border:1px solid rgba(255,255,255,0.08);">
+                      <input 
+                        type="checkbox" 
+                        id="gmailPollEnabledCheckbox" 
+                        style="width:auto; margin:0; cursor:pointer;"
+                      />
+                      <label for="gmailPollEnabledCheckbox" style="margin:0; cursor:pointer; flex:1;">
+                        Enable Gmail Monitoring
+                          <span style="display:block; font-size:11px; color:var(--muted); margin-top:4px; font-weight:normal;">
+                            Automatically check emails for payment confirmations
+                          </span>
+                      </label>
+                    </div>
+
+                    <div style="display:flex; gap:10px; margin-top:4px;">
+                      <button class="btn-primary" id="btnSaveGmailSettings" style="flex:1;">
+                        <span>Save Settings</span>
+                      </button>
+                      <button class="btn-secondary" id="btnTestGmailConnection" style="flex:0 0 auto; width:auto;">
+                        <span>Test Connection</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Gmail Monitor Status -->
+              <div id="gmailMonitorStatus" class="form-card" style="margin-top:18px;">
+                <div style="display:flex; flex-direction:column; gap:10px;">
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:13px; color:var(--muted);">Monitoring Status:</span>
+                    <span id="gmailMonitorStatusText" style="font-weight:700; font-size:13px;">Loading...</span>
+                  </div>
+                  <div style="display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:13px; color:var(--muted);">Last Checked:</span>
+                    <span id="gmailLastChecked" style="font-size:13px;">—</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Configured Gmail Addresses List -->
+              <div class="games-section" style="margin-top:32px;">
+                <h2 class="section-title">Configured Gmail Accounts</h2>
+                <div id="gmailAccountsList" class="games-list"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- TopUp View (All Roles) -->
+          <div id="topUpView" style="display:none;">
+            <h1>TopUp</h1>
+            
+            <!-- Toast Message Area -->
+            <div id="topUpToast" class="toast" style="display:none;"></div>
+
+            <!-- Total Balance Card -->
+            <div class="form-card" style="margin-top:24px; text-align:center; background:linear-gradient(135deg, rgba(0,255,204,0.15) 0%, rgba(255,208,0,0.15) 100%); border:2px solid rgba(0,255,204,0.3);">
+              <div style="margin-bottom:8px;">
+                <div id="totalCoinsBalance" style="font-size:48px; font-weight:900; color:rgba(0,255,204,0.95); font-family:'JetBrains Mono','Consolas','Courier New',monospace; letter-spacing:2px;">
+                  —
+                </div>
+                <div style="font-size:16px; color:rgba(255,255,255,0.8); margin-top:8px; text-transform:uppercase; letter-spacing:1px;">
+                  Coins
+                </div>
+              </div>
+            </div>
+
+            <!-- TopUp Content -->
+            <div id="topUpContent">
+              <div class="form-card" style="margin-top:24px; text-align:center;">
+                <button class="btn-primary" id="btnGenerateTopUp" style="width:auto; margin:0 auto;">
+                  <span>Generate TopUp Code</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Active TopUp Display -->
+            <div id="topUpDisplay" style="display:none; margin-top:32px;">
+              <div class="form-card">
+                <div style="text-align:center; margin-bottom:24px;">
+                  <img id="topUpQrImage" src="" alt="Payment QR" style="max-width:300px; width:100%; border-radius:12px; border:1px solid rgba(255,255,255,0.1);" />
+                </div>
+                
+                <!-- TOPUP Line Display -->
+                <div style="text-align:center; margin-bottom:20px;">
+                  <div style="font-size:12px; color:var(--muted); margin-bottom:12px; text-transform:uppercase; letter-spacing:0.8px;">Your Unique Code</div>
+                  <div style="display:flex; flex-direction:column; align-items:center; gap:16px;">
+                    <div id="topUpLine" style="font-family:'JetBrains Mono','Consolas','Courier New',monospace; font-size:20px; font-weight:700; color:rgba(0,255,204,0.95); letter-spacing:1px; padding:20px 24px; background:rgba(0,0,0,0.4); border-radius:12px; border:1px solid rgba(0,255,204,0.3); line-height:1.8; text-align:center; max-width:100%; word-break:break-word;"></div>
+                    <button class="btn-icon" id="btnCopyTopUpLine" title="Copy TOPUP Line" style="width:48px; height:48px; font-size:18px;">
+                      📋
+                    </button>
+                  </div>
+                </div>
+
+                <div style="text-align:center; margin-bottom:20px;">
+                  <div id="topUpTimer" style="font-size:32px; font-weight:900; color:rgba(255,208,0,0.95); font-family:'JetBrains Mono','Consolas','Courier New',monospace; letter-spacing:2px;">
+                    10:00
+                  </div>
+                  <div style="font-size:12px; color:var(--muted); margin-top:8px;">Time Remaining</div>
+                </div>
+
+                <div style="padding:16px; background:rgba(0,255,204,0.1); border:1px solid rgba(0,255,204,0.2); border-radius:12px; margin-top:20px;">
+                  <div style="font-size:13px; color:rgba(0,255,204,0.95); line-height:1.6; text-align:center;">
+                    <strong>Instructions:</strong><br />
+                    Send money to this QR and include this unique code in Remarks/Description.<br />
+                    This code expires in 10 minutes.
+                  </div>
+                </div>
+
+                <div id="topUpStatus" style="margin-top:20px; text-align:center;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Play View (All Users) -->
+          <div id="playView" style="display:none;">
+            <h1>Play</h1>
+            
+            <!-- Toast Message Area -->
+            <div id="playToast" class="toast" style="display:none;"></div>
+
+            <!-- Games List -->
+            <div class="games-section" style="margin-top:32px;">
+              <h2 class="section-title">Select a Game to Recharge</h2>
+              <div id="playGamesList" class="games-list"></div>
+            </div>
+          </div>
+
+          <!-- Admin Panel Section -->
+          <div id="adminPanelSection" style="display:none; margin-top:20px;">
+            <div class="msg" data-kind="ok" style="margin-top:12px; border-color:rgba(0,255,204,0.4);">
+              <strong>Admin Panel</strong>
+            </div>
+            
+            <div id="adminPanelContent" style="margin-top:16px;">
+              <div style="margin-bottom:16px;">
+                <div class="small" style="margin-bottom:8px;">User Management:</div>
+                <div style="position:relative;">
+                  <input 
+                    type="text" 
+                    id="adminUserSearchInput" 
+                    placeholder="Search by username..." 
+                    style="width:100%; padding:10px 40px 10px 12px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px; font-family:inherit;"
+                  />
+                  <span style="position:absolute; right:12px; top:50%; transform:translateY(-50%); color:var(--muted); font-size:16px;">🔍</span>
+                </div>
+              </div>
+              <div id="adminUsersList" style="margin-top:8px;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Delete Confirmation Modal -->
+  <div id="deleteModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Delete Game?</h3>
+      </div>
+      <div class="modal-body">
+        <p id="deleteModalText">Are you sure you want to delete this game? This will also remove all associated usernames.</p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelDelete">Cancel</button>
+        <button class="btn-danger" id="btnConfirmDelete">Delete</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Redeem Confirmation Modal -->
+  <div id="redeemModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Redeem Coins</h3>
+      </div>
+      <div class="modal-body">
+        <p id="redeemModalText" style="margin-bottom:16px;">Enter the amount of coins to redeem from this user:</p>
+        <div style="margin-bottom:16px;">
+          <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted);">Amount to Redeem:</label>
+          <input type="number" id="redeemAmountInput" min="1" step="1" placeholder="Enter amount" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px;" />
+        </div>
+        <div id="redeemBalanceInfo" style="font-size:12px; color:var(--muted);"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelRedeem">Cancel</button>
+        <button class="btn-danger" id="btnConfirmRedeem">Redeem</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Delete User Confirmation Modal -->
+  <div id="deleteUserModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Delete User?</h3>
+      </div>
+      <div class="modal-body">
+        <p id="deleteUserModalText" style="margin-bottom:16px;">Are you sure you want to delete this user? This action cannot be undone.</p>
+        <div style="padding:12px; background:rgba(255,53,94,0.1); border:1px solid rgba(255,53,94,0.3); border-radius:8px; font-size:12px; color:rgba(255,53,94,0.9);">
+          <strong>Warning:</strong> This will permanently delete the user account and all associated data.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelDeleteUser">Cancel</button>
+        <button class="btn-danger" id="btnConfirmDeleteUser">Delete User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recharge Confirmation Modal -->
+  <div id="rechargeModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Recharge User Account</h3>
+      </div>
+      <div class="modal-body">
+        <p id="rechargeModalText" style="margin-bottom:16px;">Enter the amount of coins to recharge to this user:</p>
+        <div style="margin-bottom:16px;">
+          <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted);">Amount to Recharge:</label>
+          <input type="number" id="rechargeAmountInput" min="1" step="1" placeholder="Enter amount" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px;" />
+        </div>
+        <div id="rechargeBalanceInfo" style="font-size:12px; color:var(--muted);"></div>
+        <div id="rechargeAdminNote" style="font-size:11px; color:rgba(0,255,204,0.8); margin-top:8px; padding:8px; background:rgba(0,255,204,0.1); border-radius:6px; display:none;"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelRecharge">Cancel</button>
+        <button class="btn-primary" id="btnConfirmRecharge">Recharge</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Game Recharge Modal -->
+  <div id="gameRechargeModal" class="modal" style="display:none;">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>Recharge Game</h3>
+      </div>
+      <div class="modal-body">
+        <div style="margin-bottom:16px;">
+          <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted);">Game:</label>
+          <div id="gameRechargeGameName" style="padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px; font-weight:600;"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted);">Game Username:</label>
+          <div id="gameRechargeUsername" style="padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px; font-weight:600;"></div>
+        </div>
+        <div style="margin-bottom:16px;">
+          <label style="display:block; margin-bottom:8px; font-size:12px; color:var(--muted);">Amount to Recharge:</label>
+          <input type="number" id="gameRechargeAmountInput" min="1" step="1" placeholder="Enter amount" style="width:100%; padding:10px; background:rgba(0,0,0,0.4); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:var(--text); font-size:14px;" />
+        </div>
+        <div id="gameRechargeBalanceInfo" style="font-size:12px; color:var(--muted);"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn-secondary" id="btnCancelGameRecharge">Cancel</button>
+        <button class="btn-primary" id="btnConfirmGameRecharge">Recharge</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>window.App.initDashboardPage();</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+<!-- public/recovery.html -->
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Recovery Phrase - Point Loader</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="container">
+    <h1>Recovery Phrase</h1>
+
+    <div class="msg" data-kind="error" style="margin-top:6px;">
+      <strong>READ CAREFULLY</strong><br />
+      Save your <strong>username</strong>, recovery phrase + QR now. If you lose any of these, <strong>we cannot restore access</strong>.
+      Support cannot help recover forgotten usernames or recovery phrases.
+    </div>
+
+    <div class="small" style="margin-top:10px;">Your account username:</div>
+    <div class="msg" data-kind="ok" id="uname" style="margin-top:10px;"></div>
+
+    <div class="small" style="margin-top:10px;">Your 12-word phrase:</div>
+    <div class="msg" data-kind="ok" id="phrase" style="margin-top:10px; white-space:pre-wrap; line-height:1.6;"></div>
+
+    <div class="small" style="margin-top:12px;">Recovery QR (treat like a private key):</div>
+    <div style="display:flex; flex-direction:column; align-items:center; margin-top:10px;">
+      <img id="qrImg" alt="Recovery QR" style="width:320px; height:320px; border-radius:14px; display:block;" />
+      <div id="qrVerifyStatus" style="margin-top:10px; padding:10px 14px; border-radius:12px; font-weight:700; font-size:13px; text-align:center; min-height:20px;"></div>
+      <div style="margin-top:12px; padding:8px 16px; background:rgba(10, 10, 14, 0.92); border:2px solid rgba(0, 255, 204, 0.55); border-radius:12px; font-weight:900; font-size:21px; color:rgba(255, 208, 0, 0.95); text-align:center;">GameBoy</div>
+    </div>
+
+    <div style="display:flex; gap:12px; flex-wrap:wrap; margin-top:14px;">
+      <button class="secondary" id="btnDownload" style="flex:1; min-width:160px;">Download QR</button>
+      <button class="secondary" id="btnCopyUser" style="flex:1; min-width:160px;">Copy Username</button>
+      <button class="secondary" id="btnCopyPhrase" style="flex:1; min-width:160px;">Copy Phrase</button>
+    </div>
+
+    <label style="margin-top:14px; display:flex; gap:10px; align-items:flex-start; font-weight:700;">
+      <input type="checkbox" id="ack" style="width:auto; margin-top:3px;" />
+      <span style="font-size:12px; letter-spacing:1px; text-transform:uppercase; color:rgba(255,255,255,0.75);">
+        I saved my username + recovery phrase/QR. I understand it cannot be recovered.
+      </span>
+    </label>
+
+    <button class="primary" id="btnContinue" disabled>Continue</button>
+    <div class="msg" id="msg"></div>
+  </div>
+
+  <script src="/app.js"></script>
+  <script>
+    window.App.initRecoveryPage();
+  </script>
+</body>
+</html>

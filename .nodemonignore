@@ -1,0 +1,26 @@
+# Nodemon ignore file
+# Ignore database files to prevent unnecessary restarts
+*.db
+*.db-wal
+*.db-shm
+app.db
+app.db-wal
+app.db-shm
+
+# Ignore uploads directory
+uploads/
+
+# Ignore logs
+logs/
+*.log
+
+# Ignore node_modules
+node_modules/
+
+# Ignore Python cache
+__pycache__/
+*.pyc
+
+# Ignore parser output
+parser/__pycache__/
+

@@ -815,10 +815,53 @@ app.delete("/games/:id", requireAdmin, async (req, res) => {
 
 // ---------------- Game Username Routes ----------------
 
-// GET /game-usernames - List game usernames for the current user, grouped by game
+// GET /game-usernames - List game usernames for the current user, grouped by game.
+// Self-heals missing usernames by auto-creating entries for games that don't yet have one.
 app.get("/game-usernames", requireAuth, async (req, res) => {
-  const currentUsername = req.user.username;
-  
+  const baseUsername = String(req.user?.username || "").trim();
+
+  try {
+    // 1) Fetch all games
+    const games = await db
+      .prepare("SELECT id, short_code, name FROM games ORDER BY name ASC")
+      .all();
+
+    if (games.length > 0 && baseUsername) {
+      // 2) Fetch existing game_usernames for this base username
+      const existing = await db
+        .prepare("SELECT game_id FROM game_usernames WHERE base_username = ?")
+        .all(baseUsername);
+
+      const existingGameIds = new Set(existing.map(row => Number(row.game_id)));
+      const insertUsernameStmt = db.prepare(
+        "INSERT INTO game_usernames (game_id, username, base_username) VALUES (?, ?, ?)"
+      );
+
+      // 3) For each game missing a username row, auto-create it
+      for (const game of games) {
+        if (existingGameIds.has(Number(game.id))) continue;
+
+        const fullUsername = generateGameUsername(baseUsername, game.short_code, game.name);
+        try {
+          await insertUsernameStmt.run(game.id, fullUsername, baseUsername);
+        } catch (e) {
+          const msg = (e && e.message) ? String(e.message) : String(e);
+          // Ignore unique/duplicate errors across SQLite/Postgres, log others
+          if (!/unique/i.test(msg) && !msg.includes("duplicate key value")) {
+            console.error(
+              `Error auto-creating game username for user "${baseUsername}" and game ${game.id}:`,
+              e
+            );
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error("Error ensuring game usernames for user:", baseUsername, e);
+    // Continue to return whatever data exists
+  }
+
+  // 4) Query final list and group by game (existing behavior)
   const usernames = await db
     .prepare(`
       SELECT 
@@ -834,9 +877,8 @@ app.get("/game-usernames", requireAuth, async (req, res) => {
       WHERE gu.base_username = ?
       ORDER BY g.name ASC, gu.username ASC
     `)
-    .all(currentUsername);
+    .all(baseUsername);
 
-  // Group by game
   const grouped = {};
   usernames.forEach(u => {
     const key = u.game_id;
@@ -845,14 +887,14 @@ app.get("/game-usernames", requireAuth, async (req, res) => {
         game_id: u.game_id,
         game_name: u.game_name,
         short_code: u.short_code,
-        usernames: []
+        usernames: [],
       };
     }
     grouped[key].usernames.push({
       id: u.id,
       username: u.username,
       base_username: u.base_username,
-      created_at: u.created_at
+      created_at: u.created_at,
     });
   });
 

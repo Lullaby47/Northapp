@@ -65,7 +65,7 @@ app.use((req, res, next) => {
 // Frontend
 app.use(express.static(path.join(__dirname, "public")));
 app.use("/uploads", express.static(path.join(__dirname, "uploads")));
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
+app.get("/", async (req, res) => res.sendFile(path.join(__dirname, "public", "login.html")));
 
 // Ensure uploads directory exists
 const uploadsDir = path.join(__dirname, "uploads", "payment-qrs");
@@ -148,10 +148,10 @@ function normalizeUsernameBase(s) {
 function random2Digits() {
   return String(Math.floor(Math.random() * 100)).padStart(2, "0");
 }
-function generateUniqueUsername(base) {
+async function generateUniqueUsername(base) {
   for (let i = 0; i < 50; i++) {
     const candidate = base + random2Digits();
-    const exists = db.prepare("SELECT id FROM users WHERE username = ?").get(candidate);
+    const exists = await db.prepare("SELECT id FROM users WHERE username = ?").get(candidate);
     if (!exists) return candidate;
   }
   return null;
@@ -312,7 +312,7 @@ app.post("/auth/register", registerLimiter, async (req, res) => {
   if (base.length < 3) return res.status(400).json({ error: "username must be at least 3 characters" });
   if (!isStrongPassword(password)) return res.status(400).json({ error: "password must be at least 6 characters with at least one capital letter and one number" });
 
-  const finalUsername = generateUniqueUsername(base);
+  const finalUsername = await generateUniqueUsername(base);
   if (!finalUsername) return res.status(500).json({ error: "Could not generate a unique username. Try again." });
 
   const phrase = newRecoveryPhrase12();
@@ -322,11 +322,11 @@ app.post("/auth/register", registerLimiter, async (req, res) => {
   const recovery_phrase_hash = await bcrypt.hash(phraseNorm, 12);
 
   // Check if this is the first user (admin)
-  const userCount = db.prepare("SELECT COUNT(*) as count FROM users").get();
+  const userCount = await db.prepare("SELECT COUNT(*) as count FROM users").get();
   const isFirstUser = userCount.count === 0;
   const role = isFirstUser ? "admin" : "user";
 
-  const info = db
+  const info = await db
     .prepare("INSERT INTO users (username, password_hash, recovery_phrase_hash, role) VALUES (?, ?, ?, ?)")
     .run(finalUsername, password_hash, recovery_phrase_hash, role);
 
@@ -334,13 +334,13 @@ app.post("/auth/register", registerLimiter, async (req, res) => {
   
   // Automatically create game username entries for all existing games
   try {
-    const games = db.prepare("SELECT id, short_code, name FROM games").all();
+    const games = await db.prepare("SELECT id, short_code, name FROM games").all();
     const insertUsername = db.prepare("INSERT INTO game_usernames (game_id, username, base_username) VALUES (?, ?, ?)");
     
     for (const game of games) {
       const fullUsername = generateGameUsername(finalUsername, game.short_code, game.name);
       try {
-        insertUsername.run(game.id, fullUsername, finalUsername);
+        await insertUsername.run(game.id, fullUsername, finalUsername);
       } catch (e) {
         // Ignore unique constraint errors (username might already exist)
         if (!e.message.includes("UNIQUE constraint")) {
@@ -390,13 +390,13 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
 });
 
 // LOGOUT
-app.post("/auth/logout", (req, res) => {
+app.post("/auth/logout", async (req, res) => {
   clearAuthCookie(res);
   res.json({ ok: true });
 });
 
 // ME
-app.get("/auth/me", requireAuth, (req, res) => {
+app.get("/auth/me", requireAuth, async (req, res) => {
   const user = db.prepare("SELECT id, username, role, created_at, is_banned, balance_coins, recovery_phrase_hash FROM users WHERE id = ?").get(req.user.sub);
   if (!user) return res.status(404).json({ error: "user not found" });
   
@@ -474,7 +474,7 @@ app.get("/admin/users", requireAnyRole("admin", "coadmin"), (req, res) => {
 });
 
 // POST /admin/promote - Promote user to coadmin
-app.post("/admin/promote", requireAdmin, (req, res) => {
+app.post("/admin/promote", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const adminId = req.user.sub;
 
@@ -496,7 +496,7 @@ app.post("/admin/promote", requireAdmin, (req, res) => {
 });
 
 // POST /admin/demote - Demote coadmin to user
-app.post("/admin/demote", requireAdmin, (req, res) => {
+app.post("/admin/demote", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const adminId = req.user.sub;
 
@@ -518,7 +518,7 @@ app.post("/admin/demote", requireAdmin, (req, res) => {
 });
 
 // POST /admin/ban - Ban a user
-app.post("/admin/ban", requireAdmin, (req, res) => {
+app.post("/admin/ban", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const adminId = req.user.sub;
 
@@ -540,7 +540,7 @@ app.post("/admin/ban", requireAdmin, (req, res) => {
 });
 
 // POST /admin/unban - Unban a user
-app.post("/admin/unban", requireAdmin, (req, res) => {
+app.post("/admin/unban", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const adminId = req.user.sub;
 
@@ -562,7 +562,7 @@ app.post("/admin/unban", requireAdmin, (req, res) => {
 });
 
 // POST /admin/redeem - Redeem (decrease) user balance (Admin only)
-app.post("/admin/redeem", requireAdmin, (req, res) => {
+app.post("/admin/redeem", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const amount = Number(req.body?.amount);
   const adminId = req.user.sub;
@@ -595,7 +595,7 @@ app.post("/admin/redeem", requireAdmin, (req, res) => {
 });
 
 // POST /admin/recharge - Recharge (increase) user balance (Admin/CoAdmin only)
-app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
+app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const amount = Number(req.body?.amount);
   const requesterId = req.user.sub;
@@ -609,7 +609,7 @@ app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
   }
 
   // Get requester info (to check role and balance)
-  const requester = db.prepare("SELECT id, username, role, balance_coins FROM users WHERE id = ?").get(requesterId);
+  const requester = await db.prepare("SELECT id, username, role, balance_coins FROM users WHERE id = ?").get(requesterId);
   if (!requester) {
     return res.status(404).json({ error: "Requester not found" });
   }
@@ -622,7 +622,7 @@ app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
   }
 
   // Get target user
-  const targetUser = db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "Target user not found" });
   }
@@ -641,15 +641,15 @@ app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
 
     // Transaction: deduct from requester, add to target
     try {
-      db.transaction(() => {
+      await db.transaction(async () => {
         // Deduct from coadmin balance
         const newRequesterBalance = requesterBalance - amount;
-        db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newRequesterBalance, requesterId);
+        await db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newRequesterBalance, requesterId);
         
         // Add to target user balance
         const targetBalance = Number(targetUser.balance_coins || 0);
         const newTargetBalance = targetBalance + amount;
-        db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newTargetBalance, targetUserId);
+        await db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newTargetBalance, targetUserId);
       })();
       
       res.json({ 
@@ -666,7 +666,7 @@ app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
     try {
       const targetBalance = Number(targetUser.balance_coins || 0);
       const newTargetBalance = targetBalance + amount;
-      db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newTargetBalance, targetUserId);
+      await db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newTargetBalance, targetUserId);
       
       res.json({ 
         ok: true, 
@@ -680,7 +680,7 @@ app.post("/admin/recharge", requireAnyRole("admin", "coadmin"), (req, res) => {
 });
 
 // POST /admin/delete-user - Delete a user (Admin only)
-app.post("/admin/delete-user", requireAdmin, (req, res) => {
+app.post("/admin/delete-user", requireAdmin, async (req, res) => {
   const targetUserId = Number(req.body?.user_id);
   const adminId = req.user.sub;
 
@@ -703,15 +703,15 @@ app.post("/admin/delete-user", requireAdmin, (req, res) => {
   }
 
   // Delete user and all associated data
-  db.transaction(() => {
+  await db.transaction(async () => {
     // Delete user's topups
-    db.prepare("DELETE FROM topups WHERE userId = ?").run(targetUserId);
+    await db.prepare("DELETE FROM topups WHERE userId = ?").run(targetUserId);
     // Delete user's game usernames
-    db.prepare("DELETE FROM game_usernames WHERE userId = ?").run(targetUserId);
+    await db.prepare("DELETE FROM game_usernames WHERE userId = ?").run(targetUserId);
     // Delete user's payment logs (if any reference exists)
     // Note: payment_logs might reference topups, but we're deleting topups first
     // Delete the user
-    db.prepare("DELETE FROM users WHERE id = ?").run(targetUserId);
+    await db.prepare("DELETE FROM users WHERE id = ?").run(targetUserId);
   })();
   
   res.json({ 
@@ -723,13 +723,13 @@ app.post("/admin/delete-user", requireAdmin, (req, res) => {
 // ---------------- Game Routes ----------------
 
 // GET /games - List all games (all authenticated users for Play view, admin for management)
-app.get("/games", requireAuth, (req, res) => {
+app.get("/games", requireAuth, async (req, res) => {
   const games = db.prepare("SELECT id, name, slug, short_code, created_at FROM games ORDER BY name ASC").all();
   res.json({ games });
 });
 
 // POST /games - Add a new game (admin only)
-app.post("/games", requireAdmin, (req, res) => {
+app.post("/games", requireAdmin, async (req, res) => {
   const name = String(req.body?.name || "").trim();
 
   if (!name || name.length < 3) {
@@ -781,7 +781,7 @@ app.post("/games", requireAdmin, (req, res) => {
 });
 
 // DELETE /games/:id - Delete a game (admin only)
-app.delete("/games/:id", requireAdmin, (req, res) => {
+app.delete("/games/:id", requireAdmin, async (req, res) => {
   const gameId = Number(req.params.id);
 
   if (!gameId) {
@@ -800,7 +800,7 @@ app.delete("/games/:id", requireAdmin, (req, res) => {
 // ---------------- Game Username Routes ----------------
 
 // GET /game-usernames - List game usernames for the current user, grouped by game
-app.get("/game-usernames", requireAuth, (req, res) => {
+app.get("/game-usernames", requireAuth, async (req, res) => {
   const currentUsername = req.user.username;
   
   const usernames = db
@@ -844,7 +844,7 @@ app.get("/game-usernames", requireAuth, (req, res) => {
 });
 
 // POST /game-usernames - Add a game username (admin only)
-app.post("/game-usernames", requireAdmin, (req, res) => {
+app.post("/game-usernames", requireAdmin, async (req, res) => {
   const gameId = Number(req.body?.game_id);
   const baseUsername = String(req.body?.base_username || "").trim();
 
@@ -883,7 +883,7 @@ app.post("/game-usernames", requireAdmin, (req, res) => {
 });
 
 // DELETE /game-usernames/:id - Delete a game username (admin only)
-app.delete("/game-usernames/:id", requireAdmin, (req, res) => {
+app.delete("/game-usernames/:id", requireAdmin, async (req, res) => {
   const usernameId = Number(req.params.id);
 
   if (!usernameId) {
@@ -951,13 +951,13 @@ app.post("/api/game-recharges", requireAuth, async (req, res) => {
 
   // Transaction: deduct from user balance and create recharge record
   try {
-    db.transaction(() => {
+    await db.transaction(async () => {
       // Deduct from user balance
       const newBalance = currentBalance - amount;
-      db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newBalance, userId);
+      await db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newBalance, userId);
 
       // Create recharge record
-      db.prepare(`
+      await db.prepare(`
         INSERT INTO game_recharges (user_id, game_id, game_username, amount)
         VALUES (?, ?, ?, ?)
       `).run(userId, gameId, gameUsername, amount);
@@ -1285,7 +1285,7 @@ app.post("/api/topups", requireAuth, async (req, res) => {
 });
 
 // GET /api/topups/:code - Get topup status
-app.get("/api/topups/:code", requireAuth, (req, res) => {
+app.get("/api/topups/:code", requireAuth, async (req, res) => {
   const code = String(req.params.code || "").trim();
   const userId = req.user.sub;
 
@@ -1341,27 +1341,28 @@ app.get("/api/topups/:code", requireAuth, (req, res) => {
 // ---------------- Payment Monitor Settings API (Admin/Co-Admin only) ----------------
 
 // Helper: Get setting value
-function getSetting(key, defaultValue = null) {
-  const row = db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key);
+async function getSetting(key, defaultValue = null) {
+  const row = await db.prepare("SELECT value FROM app_settings WHERE key = ?").get(key);
   return row ? row.value : defaultValue;
 }
 
 // Helper: Set setting value
-function setSetting(key, value) {
-  db.prepare(`
+async function setSetting(key, value) {
+  const now = new Date().toISOString();
+  await db.prepare(`
     INSERT INTO app_settings (key, value, updated_at) 
-    VALUES (?, ?, datetime('now'))
-    ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = datetime('now')
-  `).run(key, value, value);
+    VALUES (?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?
+  `).run(key, value, now, value, now);
 }
 
 // GET /api/admin/payment-monitor/settings
-app.get("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin"), (req, res) => {
-  const gmailAddress = getSetting("gmail_address", "");
-  const gmailPollEnabled = getSetting("gmail_poll_enabled", "0") === "1";
-  const encryptedPassword = getSetting("gmail_app_password", "");
-  const lastCheckedAt = getSetting("gmail_last_checked_at", null);
-  const lastUid = getSetting("gmail_last_uid", null);
+app.get("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin"), async (req, res) => {
+  const gmailAddress = await getSetting("gmail_address", "");
+  const gmailPollEnabled = await getSetting("gmail_poll_enabled", "0") === "1";
+  const encryptedPassword = await getSetting("gmail_app_password", "");
+  const lastCheckedAt = await getSetting("gmail_last_checked_at", null);
+  const lastUid = await getSetting("gmail_last_uid", null);
 
   res.json({
     ok: true,
@@ -1376,32 +1377,32 @@ app.get("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin"
 });
 
 // POST /api/admin/payment-monitor/settings
-app.post("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin"), (req, res) => {
+app.post("/api/admin/payment-monitor/settings", requireAnyRole("admin", "coadmin"), async (req, res) => {
   const gmailAddress = String(req.body?.gmailAddress || "").trim();
   const gmailAppPassword = String(req.body?.gmailAppPassword || "").trim();
   const gmailPollEnabled = req.body?.gmailPollEnabled === true || req.body?.gmailPollEnabled === "true";
 
   // If gmailAddress is empty, clear all Gmail settings
   if (!gmailAddress) {
-    setSetting("gmail_address", "");
-    setSetting("gmail_app_password", "");
-    setSetting("gmail_poll_enabled", "0");
+    await setSetting("gmail_address", "");
+    await setSetting("gmail_app_password", "");
+    await setSetting("gmail_poll_enabled", "0");
     return res.json({ ok: true, message: "Gmail settings cleared" });
   }
 
   // Save Gmail address
-  setSetting("gmail_address", gmailAddress);
+  await setSetting("gmail_address", gmailAddress);
 
   // Save app password if provided (normalize by removing spaces)
   if (gmailAppPassword) {
     // Remove spaces from app password (common mistake: copying with spaces)
     const normalizedPassword = gmailAppPassword.replace(/\s+/g, "");
     const encrypted = encrypt(normalizedPassword);
-    setSetting("gmail_app_password", encrypted);
+    await setSetting("gmail_app_password", encrypted);
   }
 
   // Save poll enabled status
-  setSetting("gmail_poll_enabled", gmailPollEnabled ? "1" : "0");
+  await setSetting("gmail_poll_enabled", gmailPollEnabled ? "1" : "0");
 
   res.json({ ok: true, message: "Settings saved" });
 });
@@ -1454,10 +1455,10 @@ app.post("/api/admin/payment-monitor/test", requireAnyRole("admin", "coadmin"), 
 
   // If not provided in request, use saved settings
   if (!gmailAddress) {
-    gmailAddress = getSetting("gmail_address", "");
+    gmailAddress = await getSetting("gmail_address", "");
   }
   if (!gmailAppPassword) {
-    const encryptedPassword = getSetting("gmail_app_password", "");
+    const encryptedPassword = await getSetting("gmail_app_password", "");
     if (encryptedPassword) {
       gmailAppPassword = decrypt(encryptedPassword);
     }
@@ -1485,9 +1486,9 @@ app.post("/api/admin/payment-monitor/test", requireAnyRole("admin", "coadmin"), 
 // Start Gmail poller if enabled
 let gmailPollerService = null;
 async function startGmailPoller() {
-  const gmailPollEnabled = getSetting("gmail_poll_enabled", "0") === "1";
-  const gmailAddress = getSetting("gmail_address", "");
-  const encryptedPassword = getSetting("gmail_app_password", "");
+  const gmailPollEnabled = await getSetting("gmail_poll_enabled", "0") === "1";
+  const gmailAddress = await getSetting("gmail_address", "");
+  const encryptedPassword = await getSetting("gmail_app_password", "");
 
   // Check if settings are present
   const canStart = gmailPollEnabled && gmailAddress && encryptedPassword;

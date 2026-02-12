@@ -1,7 +1,20 @@
 // db.js (WALLET MODE + RECOVERY PHRASE + ROLE SYSTEM)
 const Database = require("better-sqlite3");
+const fs = require("fs");
+const path = require("path");
 
-const db = new Database("app.db");
+// Use DB_PATH env var if set, otherwise default to ./app.db
+const dbPath = process.env.DB_PATH || "./app.db";
+
+// Ensure parent directory exists
+const dbDir = path.dirname(dbPath);
+if (!fs.existsSync(dbDir)) {
+  fs.mkdirSync(dbDir, { recursive: true });
+}
+
+console.log(`[DB] Using sqlite path: ${dbPath}`);
+
+const db = new Database(dbPath);
 db.pragma("journal_mode = WAL");
 db.pragma("foreign_keys = ON");
 

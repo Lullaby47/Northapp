@@ -4,15 +4,25 @@
 async function startWorkerJob({ action, gameCode, username, amount, uid }) {
   const base = process.env.WORKER_URL || "http://127.0.0.1:9000";
   const url = base.replace(/\/$/, "") + "/api/jobs";
+
+  const headers = {
+    "Content-Type": "application/json",
+  };
+
+  // Attach worker auth token if configured
+  if (WORKER_TOKEN) {
+    headers.Authorization = `Bearer ${WORKER_TOKEN}`;
+  }
+
   const res = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
     body: JSON.stringify({
       action,
       game_code: gameCode,
       username,
       amount,
-      uid
+      uid,
     }),
   });
   const data = await res.json().catch(() => ({}));
@@ -25,6 +35,12 @@ async function startWorkerJob({ action, gameCode, username, amount, uid }) {
 
 // server.js (WALLET MODE: username+password + 12-word recovery phrase + QR support)
 require("dotenv").config();
+
+// Shared secret for securing calls to the worker API
+const WORKER_TOKEN = process.env.WORKER_TOKEN || "";
+if (!WORKER_TOKEN) {
+  console.warn("[WORKER] WORKER_TOKEN is not set; calls to the worker API will be unauthorized.");
+}
 
 const path = require("path");
 const express = require("express");

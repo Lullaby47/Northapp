@@ -372,8 +372,8 @@ app.post("/auth/login", loginLimiter, async (req, res) => {
     return res.status(429).json({ error: `Too many attempts. Try again in ${secs}s.` });
   }
 
-  const user = db.prepare("SELECT id, username, password_hash, role, is_banned FROM users WHERE username = ?").get(username);
-  if (!user) { hit(lockKey); return res.status(401).json({ error: "invalid credentials" }); }
+  const user = await db.prepare("SELECT id, username, password_hash, role, is_banned FROM users WHERE username = ?").get(username);
+  if (!user || !user.password_hash) { hit(lockKey); return res.status(401).json({ error: "invalid credentials" }); }
 
   // Check if banned
   if (user.is_banned) {
@@ -397,7 +397,7 @@ app.post("/auth/logout", async (req, res) => {
 
 // ME
 app.get("/auth/me", requireAuth, async (req, res) => {
-  const user = db.prepare("SELECT id, username, role, created_at, is_banned, balance_coins, recovery_phrase_hash FROM users WHERE id = ?").get(req.user.sub);
+  const user = await db.prepare("SELECT id, username, role, created_at, is_banned, balance_coins, recovery_phrase_hash FROM users WHERE id = ?").get(req.user.sub);
   if (!user) return res.status(404).json({ error: "user not found" });
   
   // Double-check banned status (should be caught by requireAuth, but extra safety)
@@ -437,8 +437,8 @@ app.post("/auth/recover-reset", recoverLimiter, async (req, res) => {
     return res.status(429).json({ error: `Too many attempts. Try again in ${secs}s.` });
   }
 
-  const user = db.prepare("SELECT id, username, recovery_phrase_hash, is_banned FROM users WHERE username = ?").get(username);
-  if (!user) { hit(lockKey); return res.status(400).json({ error: "invalid recovery" }); }
+  const user = await db.prepare("SELECT id, username, recovery_phrase_hash, is_banned FROM users WHERE username = ?").get(username);
+  if (!user || !user.recovery_phrase_hash) { hit(lockKey); return res.status(400).json({ error: "invalid recovery" }); }
 
   // Check if banned
   if (user.is_banned) {
@@ -455,11 +455,11 @@ app.post("/auth/recover-reset", recoverLimiter, async (req, res) => {
   const newPhrase = newRecoveryPhrase12();
   const newPhraseHash = await bcrypt.hash(normalizePhrase(newPhrase), 12);
 
-  db.prepare("UPDATE users SET password_hash = ?, recovery_phrase_hash = ? WHERE id = ?")
+  await db.prepare("UPDATE users SET password_hash = ?, recovery_phrase_hash = ? WHERE id = ?")
     .run(new_hash, newPhraseHash, user.id);
 
   // Get updated user with role
-  const updatedUser = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(user.id);
+  const updatedUser = await db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(user.id);
   setAuthCookie(res, signToken({ id: updatedUser.id, username: updatedUser.username, role: updatedUser.role }));
 
   return res.json({ ok: true, message: "Password updated. New recovery phrase generated (save it now).", recovery_phrase: newPhrase });
@@ -468,8 +468,8 @@ app.post("/auth/recover-reset", recoverLimiter, async (req, res) => {
 // ---------------- Admin Routes ----------------
 
 // GET /admin/users - List all users (Admin/CoAdmin only)
-app.get("/admin/users", requireAnyRole("admin", "coadmin"), (req, res) => {
-  const users = db.prepare("SELECT id, username, role, is_banned, created_at, balance_coins FROM users ORDER BY id ASC").all();
+app.get("/admin/users", requireAnyRole("admin", "coadmin"), async (req, res) => {
+  const users = await db.prepare("SELECT id, username, role, is_banned, created_at, balance_coins FROM users ORDER BY id ASC").all();
   res.json({ users });
 });
 
@@ -482,7 +482,7 @@ app.post("/admin/promote", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid user or cannot promote yourself" });
   }
 
-  const targetUser = db.prepare("SELECT id, role FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -491,7 +491,7 @@ app.post("/admin/promote", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "User is already coadmin" });
   }
 
-  db.prepare("UPDATE users SET role = 'coadmin' WHERE id = ?").run(targetUserId);
+  await db.prepare("UPDATE users SET role = 'coadmin' WHERE id = ?").run(targetUserId);
   res.json({ ok: true, message: "User promoted to coadmin" });
 });
 
@@ -504,7 +504,7 @@ app.post("/admin/demote", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid user or cannot demote yourself" });
   }
 
-  const targetUser = db.prepare("SELECT id, role FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, role FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -513,7 +513,7 @@ app.post("/admin/demote", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "User is not a coadmin" });
   }
 
-  db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(targetUserId);
+  await db.prepare("UPDATE users SET role = 'user' WHERE id = ?").run(targetUserId);
   res.json({ ok: true, message: "Coadmin demoted to user" });
 });
 
@@ -526,7 +526,7 @@ app.post("/admin/ban", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid user or cannot ban yourself" });
   }
 
-  const targetUser = db.prepare("SELECT id, is_banned FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, is_banned FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -535,7 +535,7 @@ app.post("/admin/ban", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "User is already banned" });
   }
 
-  db.prepare("UPDATE users SET is_banned = 1 WHERE id = ?").run(targetUserId);
+  await db.prepare("UPDATE users SET is_banned = 1 WHERE id = ?").run(targetUserId);
   res.json({ ok: true, message: "User banned" });
 });
 
@@ -548,7 +548,7 @@ app.post("/admin/unban", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid user or cannot unban yourself" });
   }
 
-  const targetUser = db.prepare("SELECT id, is_banned FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, is_banned FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -557,7 +557,7 @@ app.post("/admin/unban", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "User is not banned" });
   }
 
-  db.prepare("UPDATE users SET is_banned = 0 WHERE id = ?").run(targetUserId);
+  await db.prepare("UPDATE users SET is_banned = 0 WHERE id = ?").run(targetUserId);
   res.json({ ok: true, message: "User unbanned" });
 });
 
@@ -575,7 +575,7 @@ app.post("/admin/redeem", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Amount must be greater than 0" });
   }
 
-  const targetUser = db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -583,7 +583,7 @@ app.post("/admin/redeem", requireAdmin, async (req, res) => {
   const currentBalance = Number(targetUser.balance_coins || 0);
   const newBalance = Math.max(0, currentBalance - amount); // Prevent negative balance
 
-  db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newBalance, targetUserId);
+  await db.prepare("UPDATE users SET balance_coins = ? WHERE id = ?").run(newBalance, targetUserId);
   
   res.json({ 
     ok: true, 
@@ -692,7 +692,7 @@ app.post("/admin/delete-user", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Cannot delete yourself" });
   }
 
-  const targetUser = db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(targetUserId);
+  const targetUser = await db.prepare("SELECT id, username, role FROM users WHERE id = ?").get(targetUserId);
   if (!targetUser) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -724,7 +724,7 @@ app.post("/admin/delete-user", requireAdmin, async (req, res) => {
 
 // GET /games - List all games (all authenticated users for Play view, admin for management)
 app.get("/games", requireAuth, async (req, res) => {
-  const games = db.prepare("SELECT id, name, slug, short_code, created_at FROM games ORDER BY name ASC").all();
+  const games = await db.prepare("SELECT id, name, slug, short_code, created_at FROM games ORDER BY name ASC").all();
   res.json({ games });
 });
 
@@ -744,7 +744,7 @@ app.post("/games", requireAdmin, async (req, res) => {
   }
 
   try {
-    const info = db
+    const info = await db
       .prepare("INSERT INTO games (name, slug, short_code) VALUES (?, ?, ?)")
       .run(name, slug, shortCode);
     
@@ -752,13 +752,13 @@ app.post("/games", requireAdmin, async (req, res) => {
     
     // Automatically create game username entries for all existing users
     try {
-      const users = db.prepare("SELECT id, username FROM users").all();
+      const users = await db.prepare("SELECT id, username FROM users").all();
       const insertUsername = db.prepare("INSERT INTO game_usernames (game_id, username, base_username) VALUES (?, ?, ?)");
       
       for (const user of users) {
         const fullUsername = generateGameUsername(user.username, shortCode, name);
         try {
-          insertUsername.run(gameId, fullUsername, user.username);
+          await insertUsername.run(gameId, fullUsername, user.username);
         } catch (e) {
           // Ignore unique constraint errors (username might already exist)
           if (!e.message.includes("UNIQUE constraint")) {
@@ -788,12 +788,12 @@ app.delete("/games/:id", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid game ID" });
   }
 
-  const game = db.prepare("SELECT id FROM games WHERE id = ?").get(gameId);
+  const game = await db.prepare("SELECT id FROM games WHERE id = ?").get(gameId);
   if (!game) {
     return res.status(404).json({ error: "Game not found" });
   }
 
-  db.prepare("DELETE FROM games WHERE id = ?").run(gameId);
+  await db.prepare("DELETE FROM games WHERE id = ?").run(gameId);
   res.json({ ok: true, message: "Game deleted" });
 });
 
@@ -861,7 +861,7 @@ app.post("/game-usernames", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "base_username can only contain letters, numbers, and underscores" });
   }
 
-  const game = db.prepare("SELECT id, short_code FROM games WHERE id = ?").get(gameId);
+  const game = await db.prepare("SELECT id, short_code FROM games WHERE id = ?").get(gameId);
   if (!game) {
     return res.status(404).json({ error: "Game not found" });
   }
@@ -869,7 +869,7 @@ app.post("/game-usernames", requireAdmin, async (req, res) => {
   const fullUsername = `${baseUsername}_${game.short_code}`;
 
   try {
-    const info = db
+    const info = await db
       .prepare("INSERT INTO game_usernames (game_id, username, base_username) VALUES (?, ?, ?)")
       .run(gameId, fullUsername, baseUsername);
     
@@ -890,12 +890,12 @@ app.delete("/game-usernames/:id", requireAdmin, async (req, res) => {
     return res.status(400).json({ error: "Invalid username ID" });
   }
 
-  const username = db.prepare("SELECT id FROM game_usernames WHERE id = ?").get(usernameId);
+  const username = await db.prepare("SELECT id FROM game_usernames WHERE id = ?").get(usernameId);
   if (!username) {
     return res.status(404).json({ error: "Username not found" });
   }
 
-  db.prepare("DELETE FROM game_usernames WHERE id = ?").run(usernameId);
+  await db.prepare("DELETE FROM game_usernames WHERE id = ?").run(usernameId);
   res.json({ ok: true, message: "Username deleted" });
 });
 
@@ -917,13 +917,13 @@ app.post("/api/game-recharges", requireAuth, async (req, res) => {
   }
 
   // Verify game exists
-  const game = db.prepare("SELECT id, name FROM games WHERE id = ?").get(gameId);
+  const game = await db.prepare("SELECT id, name FROM games WHERE id = ?").get(gameId);
   if (!game) {
     return res.status(404).json({ error: "Game not found" });
   }
 
   // Verify user has the game username
-  const username = db.prepare(`
+  const username = await db.prepare(`
     SELECT id, username FROM game_usernames 
     WHERE game_id = ? AND username = ? AND base_username = (
       SELECT username FROM users WHERE id = ?
@@ -935,7 +935,7 @@ app.post("/api/game-recharges", requireAuth, async (req, res) => {
   }
 
   // Get user balance
-  const user = db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(userId);
+  const user = await db.prepare("SELECT id, username, balance_coins FROM users WHERE id = ?").get(userId);
   if (!user) {
     return res.status(404).json({ error: "User not found" });
   }
@@ -964,7 +964,7 @@ app.post("/api/game-recharges", requireAuth, async (req, res) => {
     })();
 
     // Get the created recharge record
-    const recharge = db.prepare(`
+    const recharge = await db.prepare(`
       SELECT id, user_id, game_id, game_username, amount, created_at
       FROM game_recharges
       WHERE user_id = ? AND game_id = ? AND game_username = ?
@@ -975,7 +975,7 @@ app.post("/api/game-recharges", requireAuth, async (req, res) => {
     // Start automation worker (best-effort). If worker is down, recharge is still recorded.
     let worker = null;
     try {
-      const g = db.prepare("SELECT short_code FROM games WHERE id = ?").get(gameId);
+      const g = await db.prepare("SELECT short_code FROM games WHERE id = ?").get(gameId);
       worker = await startWorkerJob({
         action: "recharge",
         gameCode: g?.short_code || "",
@@ -1025,13 +1025,13 @@ app.post("/api/game-redeems", requireAuth, async (req, res) => {
   }
 
   // Verify game exists
-  const game = db.prepare("SELECT id, name, short_code FROM games WHERE id = ?").get(gameId);
+  const game = await db.prepare("SELECT id, name, short_code FROM games WHERE id = ?").get(gameId);
   if (!game) {
     return res.status(404).json({ error: "Game not found" });
   }
 
   // Verify user has the game username
-  const username = db.prepare(`
+  const username = await db.prepare(`
     SELECT id, username FROM game_usernames 
     WHERE game_id = ? AND username = ? AND base_username = (
       SELECT username FROM users WHERE id = ?
@@ -1043,12 +1043,12 @@ app.post("/api/game-redeems", requireAuth, async (req, res) => {
   }
 
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO game_redeems (user_id, game_id, game_username, amount)
       VALUES (?, ?, ?, ?)
     `).run(userId, gameId, gameUsername, amount);
 
-    const redeem = db.prepare(`
+    const redeem = await db.prepare(`
       SELECT id, user_id, game_id, game_username, amount, created_at
       FROM game_redeems
       WHERE user_id = ? AND game_id = ? AND game_username = ?
@@ -1146,14 +1146,14 @@ app.post("/api/payment-qrs", requireAnyRole("admin", "coadmin"), upload.single("
 });
 
 // DELETE /api/payment-qrs/:id - Delete payment QR
-app.delete("/api/payment-qrs/:id", requireAnyRole("admin", "coadmin"), (req, res) => {
+app.delete("/api/payment-qrs/:id", requireAnyRole("admin", "coadmin"), async (req, res) => {
   const qrId = Number(req.params.id);
 
   if (!qrId) {
     return res.status(400).json({ error: "Invalid QR ID" });
   }
 
-  const qr = db.prepare("SELECT id, imageUrl FROM payment_qrs WHERE id = ?").get(qrId);
+  const qr = await db.prepare("SELECT id, imageUrl FROM payment_qrs WHERE id = ?").get(qrId);
   if (!qr) {
     return res.status(404).json({ error: "Payment QR not found" });
   }
@@ -1166,7 +1166,7 @@ app.delete("/api/payment-qrs/:id", requireAnyRole("admin", "coadmin"), (req, res
     }
   }
 
-  db.prepare("DELETE FROM payment_qrs WHERE id = ?").run(qrId);
+  await db.prepare("DELETE FROM payment_qrs WHERE id = ?").run(qrId);
   res.json({ ok: true, message: "Payment QR deleted" });
 });
 
@@ -1210,7 +1210,7 @@ app.post("/api/topups", requireAuth, async (req, res) => {
   const userId = req.user.sub;
 
   // Get random payment QR
-  const qrs = db.prepare("SELECT id, name, imageUrl FROM payment_qrs").all();
+  const qrs = await db.prepare("SELECT id, name, imageUrl FROM payment_qrs").all();
   
   if (qrs.length === 0) {
     return res.status(400).json({ error: "No payment QR configured. Contact admin." });
@@ -1224,7 +1224,7 @@ app.post("/api/topups", requireAuth, async (req, res) => {
   let attempts = 0;
   do {
     code = generateTopUpCode();
-    const existing = db.prepare("SELECT id FROM topups WHERE code = ?").get(code);
+    const existing = await db.prepare("SELECT id FROM topups WHERE code = ?").get(code);
     if (!existing) break;
     attempts++;
     if (attempts > 10) {
@@ -1239,8 +1239,8 @@ app.post("/api/topups", requireAuth, async (req, res) => {
   let armedUidnext = null;
   try {
     const { getGmailUidNext } = require("./services/gmailPoller");
-    const gmailAddress = db.prepare("SELECT value FROM app_settings WHERE key = 'gmail_address'").get()?.value;
-    const gmailAppPasswordEncrypted = db.prepare("SELECT value FROM app_settings WHERE key = 'gmail_app_password'").get()?.value;
+    const gmailAddress = (await db.prepare("SELECT value FROM app_settings WHERE key = 'gmail_address'").get())?.value;
+    const gmailAppPasswordEncrypted = (await db.prepare("SELECT value FROM app_settings WHERE key = 'gmail_app_password'").get())?.value;
     
     if (gmailAddress && gmailAppPasswordEncrypted) {
       const gmailAppPassword = decrypt(gmailAppPasswordEncrypted);
@@ -1293,7 +1293,7 @@ app.get("/api/topups/:code", requireAuth, async (req, res) => {
     return res.status(400).json({ error: "Code is required" });
   }
 
-  const topup = db
+  const topup = await db
     .prepare(`
       SELECT t.id, t.code, t.status, t.expiresAt, t.createdAt, t.amount_coins,
              q.id as qrId, q.name as qrName, q.imageUrl as qrImageUrl
@@ -1313,7 +1313,7 @@ app.get("/api/topups/:code", requireAuth, async (req, res) => {
   
   if (topup.status === "PENDING" && now > expiresAt) {
     // Update to expired
-    db.prepare("UPDATE topups SET status = 'EXPIRED' WHERE id = ?").run(topup.id);
+    await db.prepare("UPDATE topups SET status = 'EXPIRED' WHERE id = ?").run(topup.id);
     topup.status = "EXPIRED";
   }
 

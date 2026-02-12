@@ -1546,13 +1546,13 @@ window.App = (() => {
             html += `<button class="admin-action" data-action="redeem" data-user-id="${user.id}" data-user-name="${escapeHtml(user.username)}" data-balance="${balance}" style="padding:4px 8px; margin-right:4px; font-size:11px; background:rgba(255,208,0,0.15); border:1px solid rgba(255,208,0,0.3); color:rgba(255,208,0,0.9); border-radius:6px; cursor:pointer;">Redeem</button>`;
           }
           
+          // Recharge button (Admin and CoAdmin, show for all users including current user)
+          if (isAdminOrCoAdmin) {
+            html += `<button class="admin-action" data-action="recharge" data-user-id="${user.id}" data-user-name="${escapeHtml(user.username)}" data-balance="${balance}" style="padding:4px 8px; margin-right:4px; font-size:11px; background:rgba(0,255,204,0.15); border:1px solid rgba(0,255,204,0.3); color:rgba(0,255,204,0.9); border-radius:6px; cursor:pointer;">Recharge</button>`;
+          }
+          
           if (!isCurrentUser) {
-            // Recharge button (Admin and CoAdmin, not for current user)
-            if (isAdminOrCoAdmin) {
-              html += `<button class="admin-action" data-action="recharge" data-user-id="${user.id}" data-user-name="${escapeHtml(user.username)}" data-balance="${balance}" style="padding:4px 8px; margin-right:4px; font-size:11px; background:rgba(0,255,204,0.15); border:1px solid rgba(0,255,204,0.3); color:rgba(0,255,204,0.9); border-radius:6px; cursor:pointer;">Recharge</button>`;
-            }
-            
-            // Promote/Demote buttons (Admin only)
+            // Promote/Demote buttons (Admin only, not for current user)
             if (isAdmin) {
               if (user.role === "coadmin") {
                 html += `<button class="admin-action" data-action="demote" data-user-id="${user.id}" style="padding:4px 8px; margin-right:4px; font-size:11px; background:rgba(255,208,0,0.15); border:1px solid rgba(255,208,0,0.3); color:rgba(255,208,0,0.9); border-radius:6px; cursor:pointer;">Demote</button>`;
@@ -1561,7 +1561,7 @@ window.App = (() => {
               }
             }
             
-            // Ban/Unban buttons (Admin only)
+            // Ban/Unban buttons (Admin only, not for current user)
             if (isAdmin) {
               if (user.is_banned) {
                 html += `<button class="admin-action" data-action="unban" data-user-id="${user.id}" style="padding:4px 8px; margin-right:4px; font-size:11px; background:rgba(0,255,204,0.15); border:1px solid rgba(0,255,204,0.3); color:rgba(0,255,204,0.9); border-radius:6px; cursor:pointer;">Unban</button>`;
@@ -1570,11 +1570,12 @@ window.App = (() => {
               }
             }
             
-            // Delete button (Admin only, only for non-current users)
+            // Delete button (Admin only, not for current user)
             if (isAdmin) {
               html += `<button class="admin-action" data-action="delete" data-user-id="${user.id}" data-user-name="${escapeHtml(user.username)}" style="padding:4px 8px; font-size:11px; background:rgba(255,53,94,0.15); border:1px solid rgba(255,53,94,0.3); color:rgba(255,53,94,0.9); border-radius:6px; cursor:pointer;">Delete</button>`;
             }
           } else {
+            // Show (You) label for current user
             html += `<span style="color:var(--muted); font-size:11px; margin-left:4px;">(You)</span>`;
           }
           
